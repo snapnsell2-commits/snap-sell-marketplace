@@ -1,6 +1,6 @@
 # Snap & Sell — Marketplace Build Plan
 
-A modern, responsive marketplace with buying-side browsing and selling-side listing management, powered by Lovable Cloud (database, logins, image storage).
+A modern, responsive marketplace with buying-side browsing and selling-side listing management, powered by your own Supabase project (database, logins, image storage).
 
 ## What the app will do
 
@@ -40,7 +40,13 @@ A modern, responsive marketplace with buying-side browsing and selling-side list
 | `/dashboard` | My listings (signed in) |
 | `/profile` | Edit my profile (signed in) |
 
-## Data structure (Lovable Cloud)
+## Backend: your own Supabase project
+
+This app will use your existing Supabase project rather than the built-in backend. Before I can build the data layer, connect it in **Project Settings → Connectors → Supabase** (a quick browser sign-in) — I can't link it from chat. Once it's connected I'll create the tables, security rules, storage buckets, and seeded categories there.
+
+Note: email sign-in and Google sign-in are switched on in your Supabase dashboard (Authentication → Providers), including the Google client ID/secret and the allowed redirect URLs. I'll tell you the exact values to paste when we get there.
+
+## Data structure
 
 - `profiles` — one per account: username (unique), display name, avatar, bio, location; auto-created on signup
 - `categories` — name, slug, icon; seeded with common marketplace categories
@@ -56,13 +62,13 @@ Security: row-level rules so anyone can read active listings and public profiles
 
 - TanStack Start routes; public pages server-rendered with their own titles/descriptions for search and sharing
 - Public reads go through a publishable-key server client behind narrow anon read policies; all writes and personal data go through authenticated server functions
-- Protected pages live under the authenticated layout; email sign-in enabled and Google configured via the managed broker
+- Protected pages live under the authenticated layout; email + Google providers enabled in your Supabase dashboard, Google via standard OAuth redirect
 - Images uploaded straight to Cloud storage from the browser with client-side resizing before upload
 - Theme via a class-based dark mode toggle persisted per browser, all colors as semantic tokens in the design system
 
 ## Build order
 
-1. Enable Lovable Cloud, database schema + policies + seeded categories, storage buckets
+1. Connect your Supabase project, then database schema + policies + seeded categories, storage buckets
 2. Design system (tokens, typography, dark/light), app shell with header/nav/footer and theme toggle
 3. Auth (email + Google) and profile creation/editing
 4. Listing creation with multi-image upload, seller dashboard
