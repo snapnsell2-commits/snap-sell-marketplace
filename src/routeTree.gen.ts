@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as BrowseRouteImport } from './routes/browse'
+import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as SellRouteImport } from './routes/sell'
 import { Route as WishlistRouteImport } from './routes/wishlist'
 import { Route as ProductIdRouteImport } from './routes/product.$id'
 import { Route as SellerUsernameRouteImport } from './routes/seller.$username'
@@ -29,6 +31,16 @@ const AuthRoute = AuthRouteImport.update({
 const BrowseRoute = BrowseRouteImport.update({
   id: '/browse',
   path: '/browse',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SellRoute = SellRouteImport.update({
+  id: '/sell',
+  path: '/sell',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WishlistRoute = WishlistRouteImport.update({
@@ -51,6 +63,8 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/browse': typeof BrowseRoute
+  '/profile': typeof ProfileRoute
+  '/sell': typeof SellRoute
   '/wishlist': typeof WishlistRoute
   '/product/$id': typeof ProductIdRoute
   '/seller/$username': typeof SellerUsernameRoute
@@ -59,6 +73,8 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/browse': typeof BrowseRoute
+  '/profile': typeof ProfileRoute
+  '/sell': typeof SellRoute
   '/wishlist': typeof WishlistRoute
   '/product/$id': typeof ProductIdRoute
   '/seller/$username': typeof SellerUsernameRoute
@@ -68,6 +84,8 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/browse': typeof BrowseRoute
+  '/profile': typeof ProfileRoute
+  '/sell': typeof SellRoute
   '/wishlist': typeof WishlistRoute
   '/product/$id': typeof ProductIdRoute
   '/seller/$username': typeof SellerUsernameRoute
@@ -78,6 +96,8 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/browse'
+    | '/profile'
+    | '/sell'
     | '/wishlist'
     | '/product/$id'
     | '/seller/$username'
@@ -86,6 +106,8 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/browse'
+    | '/profile'
+    | '/sell'
     | '/wishlist'
     | '/product/$id'
     | '/seller/$username'
@@ -94,6 +116,8 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/browse'
+    | '/profile'
+    | '/sell'
     | '/wishlist'
     | '/product/$id'
     | '/seller/$username'
@@ -103,6 +127,8 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
   BrowseRoute: typeof BrowseRoute
+  ProfileRoute: typeof ProfileRoute
+  SellRoute: typeof SellRoute
   WishlistRoute: typeof WishlistRoute
   ProductIdRoute: typeof ProductIdRoute
   SellerUsernameRoute: typeof SellerUsernameRoute
@@ -129,6 +155,20 @@ declare module '@tanstack/react-router' {
       path: '/browse'
       fullPath: '/browse'
       preLoaderRoute: typeof BrowseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sell': {
+      id: '/sell'
+      path: '/sell'
+      fullPath: '/sell'
+      preLoaderRoute: typeof SellRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/wishlist': {
@@ -159,6 +199,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
   BrowseRoute: BrowseRoute,
+  ProfileRoute: ProfileRoute,
+  SellRoute: SellRoute,
   WishlistRoute: WishlistRoute,
   ProductIdRoute: ProductIdRoute,
   SellerUsernameRoute: SellerUsernameRoute,
