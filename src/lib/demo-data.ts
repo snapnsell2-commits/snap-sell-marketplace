@@ -214,7 +214,7 @@ export const demoListings: Listing[] = seeds.map((s) => {
     category_slug: s.category_slug,
     condition: s.condition,
     quantity: s.quantity,
-    status: "active",
+    status: "available",
     location: seller?.location ?? null,
     created_at: new Date(Date.now() - s.days * 86400000).toISOString(),
     images: [img(`${s.id}-a`), img(`${s.id}-b`), img(`${s.id}-c`)],

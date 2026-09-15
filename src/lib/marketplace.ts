@@ -31,7 +31,7 @@ function mapListing(row: any): Listing {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 function applyDemoFilters(filters: ListingFilters): Listing[] {
-  let rows = demoListings.filter((l) => l.status === "active");
+  let rows = demoListings.filter((l) => l.status !== "draft");
   if (filters.q) {
     const q = filters.q.toLowerCase();
     rows = rows.filter(
@@ -64,7 +64,7 @@ export async function fetchCategories(): Promise<Category[]> {
 
 export async function fetchListings(filters: ListingFilters = {}): Promise<Listing[]> {
   if (!isSupabaseConfigured) return applyDemoFilters(filters);
-  let query = requireSupabase().from("listings").select(LISTING_SELECT).eq("status", "active");
+  let query = requireSupabase().from("listings").select(LISTING_SELECT).neq("status", "draft");
 
   if (filters.q) query = query.ilike("title", `%${filters.q}%`);
   if (filters.category && filters.category !== "all")
@@ -112,14 +112,14 @@ export async function fetchSellerListings(
 ): Promise<Listing[]> {
   if (!isSupabaseConfigured)
     return demoListings.filter(
-      (l) => l.seller_id === sellerId && (includeAll || l.status === "active"),
+      (l) => l.seller_id === sellerId && (includeAll || l.status !== "draft"),
     );
   let query = requireSupabase()
     .from("listings")
     .select(LISTING_SELECT)
     .eq("seller_id", sellerId)
     .order("created_at", { ascending: false });
-  if (!includeAll) query = query.eq("status", "active");
+  if (!includeAll) query = query.neq("status", "draft");
   const { data, error } = await query;
   if (error) throw error;
   return (data ?? []).map(mapListing);
@@ -271,7 +271,7 @@ export async function createListing(userId: string, input: NewListingInput): Pro
       condition: input.condition,
       quantity: input.quantity,
       location: input.location,
-      status: "active",
+      status: "available",
     })
     .select("id")
     .single();
