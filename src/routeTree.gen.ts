@@ -10,7 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as BrowseRouteImport } from './routes/browse'
+import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as SellRouteImport } from './routes/sell'
+import { Route as WishlistRouteImport } from './routes/wishlist'
 import { Route as ProductIdRouteImport } from './routes/product.$id'
 import { Route as SellerUsernameRouteImport } from './routes/seller.$username'
 
@@ -19,9 +23,29 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BrowseRoute = BrowseRouteImport.update({
   id: '/browse',
   path: '/browse',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SellRoute = SellRouteImport.update({
+  id: '/sell',
+  path: '/sell',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WishlistRoute = WishlistRouteImport.update({
+  id: '/wishlist',
+  path: '/wishlist',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProductIdRoute = ProductIdRouteImport.update({
@@ -37,34 +61,75 @@ const SellerUsernameRoute = SellerUsernameRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/browse': typeof BrowseRoute
+  '/profile': typeof ProfileRoute
+  '/sell': typeof SellRoute
+  '/wishlist': typeof WishlistRoute
   '/product/$id': typeof ProductIdRoute
   '/seller/$username': typeof SellerUsernameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/browse': typeof BrowseRoute
+  '/profile': typeof ProfileRoute
+  '/sell': typeof SellRoute
+  '/wishlist': typeof WishlistRoute
   '/product/$id': typeof ProductIdRoute
   '/seller/$username': typeof SellerUsernameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/browse': typeof BrowseRoute
+  '/profile': typeof ProfileRoute
+  '/sell': typeof SellRoute
+  '/wishlist': typeof WishlistRoute
   '/product/$id': typeof ProductIdRoute
   '/seller/$username': typeof SellerUsernameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/browse' | '/product/$id' | '/seller/$username'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/browse'
+    | '/profile'
+    | '/sell'
+    | '/wishlist'
+    | '/product/$id'
+    | '/seller/$username'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/browse' | '/product/$id' | '/seller/$username'
-  id: '__root__' | '/' | '/browse' | '/product/$id' | '/seller/$username'
+  to:
+    | '/'
+    | '/auth'
+    | '/browse'
+    | '/profile'
+    | '/sell'
+    | '/wishlist'
+    | '/product/$id'
+    | '/seller/$username'
+  id:
+    | '__root__'
+    | '/'
+    | '/auth'
+    | '/browse'
+    | '/profile'
+    | '/sell'
+    | '/wishlist'
+    | '/product/$id'
+    | '/seller/$username'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthRoute: typeof AuthRoute
   BrowseRoute: typeof BrowseRoute
+  ProfileRoute: typeof ProfileRoute
+  SellRoute: typeof SellRoute
+  WishlistRoute: typeof WishlistRoute
   ProductIdRoute: typeof ProductIdRoute
   SellerUsernameRoute: typeof SellerUsernameRoute
 }
@@ -78,11 +143,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/browse': {
       id: '/browse'
       path: '/browse'
       fullPath: '/browse'
       preLoaderRoute: typeof BrowseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sell': {
+      id: '/sell'
+      path: '/sell'
+      fullPath: '/sell'
+      preLoaderRoute: typeof SellRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/wishlist': {
+      id: '/wishlist'
+      path: '/wishlist'
+      fullPath: '/wishlist'
+      preLoaderRoute: typeof WishlistRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/product/$id': {
@@ -104,7 +197,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthRoute: AuthRoute,
   BrowseRoute: BrowseRoute,
+  ProfileRoute: ProfileRoute,
+  SellRoute: SellRoute,
+  WishlistRoute: WishlistRoute,
   ProductIdRoute: ProductIdRoute,
   SellerUsernameRoute: SellerUsernameRoute,
 }
