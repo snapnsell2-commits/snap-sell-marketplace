@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as BrowseRouteImport } from './routes/browse'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as MessagesRouteImport } from './routes/messages'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as SellRouteImport } from './routes/sell'
 import { Route as WishlistRouteImport } from './routes/wishlist'
@@ -31,6 +33,16 @@ const AuthRoute = AuthRouteImport.update({
 const BrowseRoute = BrowseRouteImport.update({
   id: '/browse',
   path: '/browse',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MessagesRoute = MessagesRouteImport.update({
+  id: '/messages',
+  path: '/messages',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProfileRoute = ProfileRouteImport.update({
@@ -63,6 +75,8 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/browse': typeof BrowseRoute
+  '/dashboard': typeof DashboardRoute
+  '/messages': typeof MessagesRoute
   '/profile': typeof ProfileRoute
   '/sell': typeof SellRoute
   '/wishlist': typeof WishlistRoute
@@ -73,6 +87,8 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/browse': typeof BrowseRoute
+  '/dashboard': typeof DashboardRoute
+  '/messages': typeof MessagesRoute
   '/profile': typeof ProfileRoute
   '/sell': typeof SellRoute
   '/wishlist': typeof WishlistRoute
@@ -84,6 +100,8 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/browse': typeof BrowseRoute
+  '/dashboard': typeof DashboardRoute
+  '/messages': typeof MessagesRoute
   '/profile': typeof ProfileRoute
   '/sell': typeof SellRoute
   '/wishlist': typeof WishlistRoute
@@ -96,6 +114,8 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/browse'
+    | '/dashboard'
+    | '/messages'
     | '/profile'
     | '/sell'
     | '/wishlist'
@@ -106,6 +126,8 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/browse'
+    | '/dashboard'
+    | '/messages'
     | '/profile'
     | '/sell'
     | '/wishlist'
@@ -116,6 +138,8 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/browse'
+    | '/dashboard'
+    | '/messages'
     | '/profile'
     | '/sell'
     | '/wishlist'
@@ -127,6 +151,8 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
   BrowseRoute: typeof BrowseRoute
+  DashboardRoute: typeof DashboardRoute
+  MessagesRoute: typeof MessagesRoute
   ProfileRoute: typeof ProfileRoute
   SellRoute: typeof SellRoute
   WishlistRoute: typeof WishlistRoute
@@ -155,6 +181,20 @@ declare module '@tanstack/react-router' {
       path: '/browse'
       fullPath: '/browse'
       preLoaderRoute: typeof BrowseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/messages': {
+      id: '/messages'
+      path: '/messages'
+      fullPath: '/messages'
+      preLoaderRoute: typeof MessagesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/profile': {
@@ -199,6 +239,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
   BrowseRoute: BrowseRoute,
+  DashboardRoute: DashboardRoute,
+  MessagesRoute: MessagesRoute,
   ProfileRoute: ProfileRoute,
   SellRoute: SellRoute,
   WishlistRoute: WishlistRoute,
