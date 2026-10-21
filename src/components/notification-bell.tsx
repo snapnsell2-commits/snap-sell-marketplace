@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { Bell } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +16,7 @@ import { useAuth } from "@/lib/auth";
 import { markAllNotificationsRead, markNotificationRead } from "@/lib/notifications";
 import { timeAgo } from "@/lib/types";
 import { useNotifications } from "@/lib/use-notifications";
+import { errorMessage } from "@/lib/utils";
 
 export function NotificationBell() {
   const { user } = useAuth();
@@ -24,8 +26,7 @@ export function NotificationBell() {
 
   if (!user) return null;
 
-  const refresh = () =>
-    queryClient.invalidateQueries({ queryKey: ["notifications", user.id] });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["notifications", user.id] });
 
   return (
     <DropdownMenu>
@@ -46,8 +47,12 @@ export function NotificationBell() {
             <button
               className="text-xs font-medium text-primary hover:underline"
               onClick={async () => {
-                await markAllNotificationsRead(user.id);
-                void refresh();
+                try {
+                  await markAllNotificationsRead(user.id);
+                  void refresh();
+                } catch (error) {
+                  toast.error(errorMessage(error, "Couldn't mark them as read."));
+                }
               }}
             >
               Mark all read
@@ -56,9 +61,7 @@ export function NotificationBell() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {items.length === 0 && (
-          <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-            No notifications yet.
-          </p>
+          <p className="px-3 py-6 text-center text-sm text-muted-foreground">No notifications yet.</p>
         )}
         <div className="max-h-96 overflow-y-auto">
           {items.map((n) => (
@@ -66,9 +69,15 @@ export function NotificationBell() {
               key={n.id}
               className="flex flex-col items-start gap-0.5 whitespace-normal py-2.5"
               onSelect={async () => {
-                if (!n.read) await markNotificationRead(n.id);
-                void refresh();
-                if (n.link) void router.navigate({ to: n.link });
+                try {
+                  if (!n.read) await markNotificationRead(n.id);
+                  void refresh();
+                } catch {
+                  /* opening the link matters more than the read flag */
+                }
+                // history.push understands full paths with a query string ("/messages?c=…"),
+                // which router.navigate({ to }) does not.
+                if (n.link) void router.history.push(n.link);
               }}
             >
               <span className="flex w-full items-center gap-2">

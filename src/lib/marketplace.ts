@@ -1,4 +1,5 @@
 import { demoCategories, demoListings, demoProfiles } from "./demo-data";
+import { extensionFor, resizeImage } from "./images";
 import { isSupabaseConfigured, requireSupabase, supabase } from "./supabase";
 import type { Category, Listing, ListingFilters, Profile } from "./types";
 
@@ -66,7 +67,12 @@ export async function fetchListings(filters: ListingFilters = {}): Promise<Listi
   if (!isSupabaseConfigured) return applyDemoFilters(filters);
   let query = requireSupabase().from("listings").select(LISTING_SELECT).neq("status", "draft");
 
-  if (filters.q) query = query.ilike("title", `%${filters.q}%`);
+  if (filters.q?.trim()) {
+    // Neutralise characters that have a special meaning in LIKE patterns and in
+    // PostgREST's `or(...)` syntax, so searching for "50% off, (new)" can't break the query.
+    const term = filters.q.trim().replace(/[%_\\]/g, "\\$&").replace(/[,()]/g, " ");
+    query = query.or(`title.ilike.%${term}%,description.ilike.%${term}%`);
+  }
   if (filters.category && filters.category !== "all")
     query = query.eq("category_slug", filters.category);
   if (filters.condition && filters.condition !== "all")
@@ -177,7 +183,10 @@ export async function toggleWishlist(
   } else {
     const { error } = await client
       .from("wishlists")
-      .upsert({ user_id: userId, listing_id: listingId }, { onConflict: "user_id,listing_id" });
+      .upsert(
+        { user_id: userId, listing_id: listingId },
+        { onConflict: "user_id,listing_id", ignoreDuplicates: true },
+      );
     if (error) throw error;
   }
 }
@@ -204,12 +213,16 @@ export async function recordView(userId: string | null, listingId: string): Prom
   const ids = [listingId, ...readLocal("recent").filter((i) => i !== listingId)].slice(0, 12);
   writeLocal("recent", ids);
   if (!isSupabaseConfigured || !userId) return;
-  await requireSupabase()
-    .from("recently_viewed")
-    .upsert(
-      { user_id: userId, listing_id: listingId, viewed_at: new Date().toISOString() },
-      { onConflict: "user_id,listing_id" },
-    );
+  try {
+    await requireSupabase()
+      .from("recently_viewed")
+      .upsert(
+        { user_id: userId, listing_id: listingId, viewed_at: new Date().toISOString() },
+        { onConflict: "user_id,listing_id" },
+      );
+  } catch {
+    /* recently-viewed is a nicety; never let it break the page */
+  }
 }
 
 export async function fetchRecentlyViewed(userId: string | null): Promise<Listing[]> {
@@ -243,19 +256,20 @@ export async function uploadListingImages(
   files: File[],
 ): Promise<string[]> {
   const client = requireSupabase();
-  const urls: string[] = [];
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i]!;
-    const ext = file.name.split(".").pop() ?? "jpg";
-    const path = `${userId}/${listingId}/${i}-${Date.now()}.${ext}`;
-    const { error } = await client.storage.from("listing-images").upload(path, file, {
-      upsert: true,
-      contentType: file.type,
-    });
-    if (error) throw error;
-    urls.push(client.storage.from("listing-images").getPublicUrl(path).data.publicUrl);
-  }
-  return urls;
+  const stamp = Date.now();
+  // Upload in parallel; Promise.all keeps the original photo order.
+  return Promise.all(
+    files.map(async (file, i) => {
+      const body = await resizeImage(file);
+      const path = `${userId}/${listingId}/${i}-${stamp}.${extensionFor(body, file.name)}`;
+      const { error } = await client.storage.from("listing-images").upload(path, body, {
+        upsert: true,
+        contentType: body.type || file.type || "image/jpeg",
+      });
+      if (error) throw error;
+      return client.storage.from("listing-images").getPublicUrl(path).data.publicUrl;
+    }),
+  );
 }
 
 export async function createListing(userId: string, input: NewListingInput): Promise<string> {
@@ -279,11 +293,17 @@ export async function createListing(userId: string, input: NewListingInput): Pro
   const listingId = (data as { id: string }).id;
 
   if (input.images.length) {
-    const urls = await uploadListingImages(userId, listingId, input.images);
-    const { error: imgError } = await client
-      .from("listing_images")
-      .insert(urls.map((url, position) => ({ listing_id: listingId, url, position })));
-    if (imgError) throw imgError;
+    try {
+      const urls = await uploadListingImages(userId, listingId, input.images);
+      const { error: imgError } = await client
+        .from("listing_images")
+        .insert(urls.map((url, position) => ({ listing_id: listingId, url, position })));
+      if (imgError) throw imgError;
+    } catch (failure) {
+      // Don't leave a half-finished listing without photos behind.
+      await client.from("listings").delete().eq("id", listingId);
+      throw failure;
+    }
   }
   return listingId;
 }
@@ -311,11 +331,11 @@ export async function updateProfile(
 
 export async function uploadAvatar(userId: string, file: File): Promise<string> {
   const client = requireSupabase();
-  const ext = file.name.split(".").pop() ?? "jpg";
-  const path = `${userId}/avatar-${Date.now()}.${ext}`;
+  const body = await resizeImage(file, 512, 0.9);
+  const path = `${userId}/avatar-${Date.now()}.${extensionFor(body, file.name)}`;
   const { error } = await client.storage
     .from("avatars")
-    .upload(path, file, { upsert: true, contentType: file.type });
+    .upload(path, body, { upsert: true, contentType: body.type || file.type || "image/jpeg" });
   if (error) throw error;
   return client.storage.from("avatars").getPublicUrl(path).data.publicUrl;
 }

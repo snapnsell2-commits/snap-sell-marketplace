@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Heart, MapPin, Package, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { OfferPanel } from "@/components/offer-panel";
 import { ProductGrid } from "@/components/product-card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth";
 import { fetchListing, fetchRecentlyViewed, fetchSellerListings, recordView } from "@/lib/marketplace";
-import { conditionLabel, formatPrice } from "@/lib/types";
+import { conditionLabel, formatPrice, statusLabel } from "@/lib/types";
 import { useWishlist } from "@/lib/use-wishlist";
 import { cn } from "@/lib/utils";
 
@@ -52,9 +53,15 @@ function ProductPage() {
     queryFn: () => fetchRecentlyViewed(user?.id ?? null),
   });
 
+  const viewedId = listing.data?.id;
   useEffect(() => {
-    if (listing.data) void recordView(user?.id ?? null, listing.data.id);
-  }, [listing.data, user?.id]);
+    if (viewedId) void recordView(user?.id ?? null, viewedId);
+  }, [viewedId, user?.id]);
+
+  // Moving between products reuses this component, so start each gallery at photo 1.
+  useEffect(() => {
+    setActive(0);
+  }, [id]);
 
   if (listing.isPending) {
     return (
@@ -130,6 +137,11 @@ function ProductPage() {
             <Badge variant="outline" className="rounded-full capitalize">
               {item.category_slug.replace(/-/g, " ")}
             </Badge>
+            {item.status !== "available" && (
+              <Badge variant="default" className="rounded-full">
+                {statusLabel(item.status)}
+              </Badge>
+            )}
           </div>
           <h1 className="mt-3 font-display text-3xl font-extrabold sm:text-4xl">{item.title}</h1>
           <p className="mt-3 font-display text-4xl font-extrabold text-primary">
@@ -151,19 +163,22 @@ function ProductPage() {
             </span>
           </div>
 
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Button size="lg" className="rounded-full">
-              Contact seller
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="rounded-full"
-              onClick={() => toggle(item.id)}
-            >
-              <Heart className={cn("size-4", saved && "fill-primary text-primary")} />
-              {saved ? "Saved" : "Save"}
-            </Button>
+          <div className="mt-6">
+            <OfferPanel
+              listing={item}
+              extraActions={
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="rounded-full"
+                  onClick={() => toggle(item.id)}
+                  aria-pressed={saved}
+                >
+                  <Heart className={cn("size-4", saved && "fill-primary text-primary")} />
+                  {saved ? "Saved" : "Save"}
+                </Button>
+              }
+            />
           </div>
 
           <Separator className="my-7" />

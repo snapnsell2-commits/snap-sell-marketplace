@@ -20,10 +20,11 @@ export const Route = createFileRoute("/wishlist")({
 });
 
 function WishlistPage() {
-  const { ids } = useWishlist();
+  const { ids, isLoading } = useWishlist();
   const listings = useQuery({
     queryKey: ["wishlist-listings", ids],
     queryFn: () => fetchListingsByIds(ids),
+    enabled: !isLoading,
   });
 
   return (
@@ -31,7 +32,7 @@ function WishlistPage() {
       <h1 className="font-display text-3xl font-extrabold">Your wishlist</h1>
       <p className="mt-2 text-muted-foreground">Saved listings you can come back to anytime.</p>
 
-      {listings.isPending ? (
+      {isLoading || listings.isPending ? (
         <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="aspect-[4/5] rounded-3xl" />

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ImagePlus, X } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/lib/auth";
 import { createListing, fetchCategories } from "@/lib/marketplace";
+import { MAX_UPLOAD_BYTES } from "@/lib/images";
 import { CONDITIONS } from "@/lib/types";
+import { errorMessage } from "@/lib/utils";
 
 export const Route = createFileRoute("/sell")({
   head: () => ({
@@ -39,7 +41,7 @@ export const Route = createFileRoute("/sell")({
 
 function SellPage() {
   const navigate = useNavigate();
-  const { user, configured } = useAuth();
+  const { user, loading, configured } = useAuth();
   const categories = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
 
   const [title, setTitle] = useState("");
@@ -52,6 +54,15 @@ function SellPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
 
+  // One preview URL per photo, created once and released when no longer needed
+  // (calling URL.createObjectURL during render leaked memory on every keystroke).
+  const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
+  useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
+
+  if (loading) {
+    return <div className="container-page py-24 text-center text-muted-foreground">Loading…</div>;
+  }
+
   if (!user) {
     return (
       <div className="container-page py-24 text-center">
@@ -60,7 +71,7 @@ function SellPage() {
           {configured ? "You need an account to sell." : "Listings turn on once your database is connected."}
         </p>
         <Button className="mt-6 rounded-full" asChild>
-          <Link to="/auth">Sign in</Link>
+          <Link to="/auth" search={{ redirect: "/sell" }}>Sign in</Link>
         </Button>
       </div>
     );
@@ -68,28 +79,40 @@ function SellPage() {
 
   const addFiles = (list: FileList | null) => {
     if (!list) return;
-    setFiles((prev) => [...prev, ...Array.from(list)].slice(0, 8));
+    const incoming = Array.from(list);
+    const images = incoming.filter((f) => f.type.startsWith("image/"));
+    if (images.length < incoming.length) toast.error("Only image files can be added.");
+    const fine = images.filter((f) => f.size <= MAX_UPLOAD_BYTES);
+    if (fine.length < images.length) toast.error("Some photos were over 25 MB and were skipped.");
+    setFiles((prev) => {
+      const next = [...prev, ...fine];
+      if (next.length > 8) toast.error("You can add up to 8 photos.");
+      return next.slice(0, 8);
+    });
   };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!category) return toast.error("Pick a category.");
+    const amount = Number(price);
+    if (!Number.isFinite(amount) || amount < 0) return toast.error("Enter a valid price.");
+    if (title.trim().length < 3) return toast.error("Give your listing a clearer title.");
     setBusy(true);
     try {
       const id = await createListing(user.id, {
-        title,
-        description,
-        price: Number(price),
+        title: title.trim(),
+        description: description.trim(),
+        price: amount,
         category_slug: category,
         condition,
-        quantity: Number(quantity) || 1,
-        location: location || null,
+        quantity: Math.max(1, Math.floor(Number(quantity)) || 1),
+        location: location.trim() || null,
         images: files,
       });
       toast.success("Your listing is live!");
       void navigate({ to: "/product/$id", params: { id } });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save the listing.");
+      toast.error(errorMessage(error, "Could not save the listing."));
     } finally {
       setBusy(false);
     }
@@ -106,7 +129,7 @@ function SellPage() {
           <div className="flex flex-wrap gap-3">
             {files.map((file, i) => (
               <div key={`${file.name}-${i}`} className="relative size-24 overflow-hidden rounded-2xl border">
-                <img src={URL.createObjectURL(file)} alt="" className="size-full object-cover" />
+                <img src={previews[i]} alt="" className="size-full object-cover" />
                 <button
                   type="button"
                   aria-label="Remove photo"
@@ -124,7 +147,10 @@ function SellPage() {
                 accept="image/*"
                 multiple
                 className="sr-only"
-                onChange={(e) => addFiles(e.target.files)}
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  e.target.value = "";
+                }}
               />
             </label>
           </div>

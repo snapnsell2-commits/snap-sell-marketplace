@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { ImageOff } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -16,8 +17,11 @@ import { useAuth } from "@/lib/auth";
 import { deleteListing, fetchSellerListings, updateListingStatus } from "@/lib/marketplace";
 import { fetchMyOffers, setOfferStatus } from "@/lib/offers";
 import { formatPrice, OFFER_STATUS_LABELS, statusLabel, timeAgo } from "@/lib/types";
+import { errorMessage } from "@/lib/utils";
 
 export const Route = createFileRoute("/dashboard")({
+  validateSearch: (search: Record<string, unknown>): { tab?: "listings" | "offers" | undefined } =>
+    search["tab"] === "offers" ? { tab: "offers" } : {},
   head: () => ({
     meta: [
       { title: "Your listings and offers — Snap & Sell" },
@@ -33,8 +37,10 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function DashboardPage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const queryClient = useQueryClient();
+  const { tab } = Route.useSearch();
+  const navigate = useNavigate();
 
   const listings = useQuery({
     queryKey: ["my-listings", user?.id ?? null],
@@ -53,14 +59,20 @@ function DashboardPage() {
       void queryClient.invalidateQueries({ queryKey: ["my-listings"] });
       void queryClient.invalidateQueries({ queryKey: ["offers"] });
     },
-    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Something went wrong."),
+    onError: (e: unknown) => toast.error(errorMessage(e)),
   });
+
+  if (loading) {
+    return <div className="container-page py-24 text-center text-muted-foreground">Loading…</div>;
+  }
 
   if (!user) {
     return (
       <div className="container-page py-24 text-center">
         <h1 className="font-display text-3xl font-extrabold">Sign in to see your dashboard</h1>
-        <Button className="mt-6 rounded-full" asChild><Link to="/auth">Sign in</Link></Button>
+        <Button className="mt-6 rounded-full" asChild>
+          <Link to="/auth" search={{ redirect: "/dashboard" }}>Sign in</Link>
+        </Button>
       </div>
     );
   }
@@ -72,7 +84,13 @@ function DashboardPage() {
     <div className="container-page py-10">
       <h1 className="font-display text-3xl font-extrabold">Your dashboard</h1>
 
-      <Tabs defaultValue="listings" className="mt-6">
+      <Tabs
+        value={tab ?? "listings"}
+        onValueChange={(v) =>
+          void navigate({ to: "/dashboard", search: v === "offers" ? { tab: "offers" } : {} })
+        }
+        className="mt-6"
+      >
         <TabsList className="rounded-full">
           <TabsTrigger value="listings" className="rounded-full">Listings</TabsTrigger>
           <TabsTrigger value="offers" className="rounded-full">Offers</TabsTrigger>
@@ -88,12 +106,18 @@ function DashboardPage() {
             <ul className="grid gap-4">
               {rows.map((listing) => (
                 <li key={listing.id} className="flex flex-wrap items-center gap-4 rounded-2xl border bg-card p-4">
-                  <img
-                    src={listing.images[0]}
-                    alt=""
-                    className="size-16 rounded-xl object-cover"
-                    loading="lazy"
-                  />
+                  {listing.images[0] ? (
+                    <img
+                      src={listing.images[0]}
+                      alt=""
+                      className="size-16 rounded-xl object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="grid size-16 place-items-center rounded-xl bg-muted text-muted-foreground">
+                      <ImageOff className="size-5" />
+                    </div>
+                  )}
                   <div className="min-w-0 flex-1">
                     <Link to="/product/$id" params={{ id: listing.id }} className="font-semibold hover:underline">
                       {listing.title}
@@ -122,12 +146,13 @@ function DashboardPage() {
                   <Button
                     variant="ghost"
                     className="rounded-full"
-                    onClick={() =>
+                    onClick={() => {
+                      if (!window.confirm(`Delete "${listing.title}"? This can't be undone.`)) return;
                       mutate.mutate(async () => {
                         await deleteListing(listing.id);
                         toast.success("Listing deleted.");
-                      })
-                    }
+                      });
+                    }}
                   >
                     Delete
                   </Button>
@@ -174,6 +199,12 @@ function DashboardPage() {
                             <Button
                               size="sm"
                               className="rounded-full"
+                              disabled={offer.listing?.status !== "available"}
+                              title={
+                                offer.listing?.status !== "available"
+                                  ? "This item isn't available, so the offer can't be accepted."
+                                  : undefined
+                              }
                               onClick={() =>
                                 mutate.mutate(async () => {
                                   await setOfferStatus(offer.id, "accepted");

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeftRight, Check, HandCoins, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ArrowLeftRight, Check, HandCoins, LayoutGrid, MessageCircle, X } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -21,9 +21,21 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/lib/auth";
 import { startConversation } from "@/lib/chat";
-import { counterOffer, fetchOfferHistory, fetchOffersForListing, sendOffer, setOfferStatus } from "@/lib/offers";
-import { supabase } from "@/lib/supabase";
-import { formatPrice, OFFER_STATUS_LABELS, timeAgo, type Listing, type Offer } from "@/lib/types";
+import {
+  counterOffer,
+  fetchOfferHistory,
+  fetchOffersForListing,
+  sendOffer,
+  setOfferStatus,
+} from "@/lib/offers";
+import {
+  formatPrice,
+  OFFER_STATUS_LABELS,
+  timeAgo,
+  type Listing,
+  type Offer,
+} from "@/lib/types";
+import { errorMessage } from "@/lib/utils";
 
 const EVENT_LABELS: Record<string, string> = {
   offer: "made an offer",
@@ -34,8 +46,20 @@ const EVENT_LABELS: Record<string, string> = {
   countered: "countered the offer",
 };
 
-export function OfferPanel({ listing }: { listing: Listing }) {
-  const { user, configured } = useAuth();
+/**
+ * Everything a buyer or seller does about a price on the product page: make an
+ * offer, message the other person, accept / decline / counter / cancel, and the
+ * full negotiation history. `extraActions` lets the page add its own buttons
+ * (like Save) to the same row.
+ */
+export function OfferPanel({
+  listing,
+  extraActions,
+}: {
+  listing: Listing;
+  extraActions?: ReactNode;
+}) {
+  const { user, loading, configured } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const isSeller = user?.id === listing.seller_id;
@@ -51,27 +75,8 @@ export function OfferPanel({ listing }: { listing: Listing }) {
     enabled: Boolean(configured && user),
   });
 
-  useEffect(() => {
-    if (!supabase || !user) return;
-    const channel = supabase
-      .channel(`offers:${listing.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "offers", filter: `listing_id=eq.${listing.id}` },
-        () => {
-          void queryClient.invalidateQueries({ queryKey: ["offers", listing.id] });
-          void queryClient.invalidateQueries({ queryKey: ["offer-history", listing.id] });
-          void queryClient.invalidateQueries({ queryKey: ["listing", listing.id] });
-        },
-      )
-      .subscribe();
-    return () => {
-      void supabase?.removeChannel(channel);
-    };
-  }, [listing.id, user, queryClient]);
-
   const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: ["offers", listing.id] });
+    void queryClient.invalidateQueries({ queryKey: ["offers"] });
     void queryClient.invalidateQueries({ queryKey: ["offer-history", listing.id] });
     void queryClient.invalidateQueries({ queryKey: ["listing", listing.id] });
   };
@@ -79,39 +84,52 @@ export function OfferPanel({ listing }: { listing: Listing }) {
   const action = useMutation({
     mutationFn: async (fn: () => Promise<void>) => fn(),
     onSuccess: refresh,
-    onError: (error: unknown) =>
-      toast.error(error instanceof Error ? error.message : "Something went wrong."),
+    onError: (error: unknown) => toast.error(errorMessage(error)),
   });
 
-  const rows = offers.data ?? [];
-  const mine = rows.filter((o) => (isSeller ? true : o.buyer_id === user?.id));
-  const openOffer = mine.find((o) => o.status === "pending");
+  const openChat = useMutation({
+    mutationFn: (buyerId: string) =>
+      startConversation({ listingId: listing.id, buyerId, sellerId: listing.seller_id }),
+    onSuccess: (conversationId) => {
+      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      void navigate({ to: "/messages", search: { c: conversationId } });
+    },
+    onError: (error: unknown) => toast.error(errorMessage(error, "Couldn't open the chat.")),
+  });
 
-  const chat = async () => {
-    if (!user) return void navigate({ to: "/auth" });
-    const id = await startConversation({
-      listingId: listing.id,
-      buyerId: user.id,
-      sellerId: listing.seller_id,
-    });
-    void navigate({ to: "/messages", search: { c: id } });
-  };
+  if (loading) {
+    return <div className="h-12 animate-pulse rounded-full bg-muted" aria-hidden />;
+  }
 
   if (!user) {
     return (
-      <div className="rounded-2xl border border-dashed p-5 text-sm text-muted-foreground">
-        <Link to="/auth" className="font-medium text-primary hover:underline">Sign in</Link>{" "}
-        to make an offer or message the seller.
+      <div className="space-y-4">
+        {extraActions && <div className="flex flex-wrap gap-3">{extraActions}</div>}
+        <div className="rounded-2xl border border-dashed p-5 text-sm text-muted-foreground">
+          <Link
+            to="/auth"
+            search={{ redirect: `/product/${listing.id}` }}
+            className="font-medium text-primary hover:underline"
+          >
+            Sign in
+          </Link>{" "}
+          to make an offer or message the seller.
+        </div>
       </div>
     );
   }
 
+  const rows = offers.data ?? [];
+  const hasOpenOffer = rows.some((o) => o.status === "pending" && o.buyer_id === user.id);
+  const canMakeOffer = !isSeller && listing.status === "available" && !hasOpenOffer;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap gap-3">
-        {!isSeller && listing.status === "available" && (
+        {canMakeOffer && (
           <OfferDialog
             title="Make an offer"
+            description={`Listed at ${formatPrice(listing.price, listing.currency)}. Suggest a price and add a short note.`}
             suggested={listing.price}
             trigger={
               <Button size="lg" className="rounded-full">
@@ -134,17 +152,47 @@ export function OfferPanel({ listing }: { listing: Listing }) {
           />
         )}
         {!isSeller && (
-          <Button size="lg" variant="outline" className="rounded-full" onClick={() => void chat()}>
-            Message seller
+          <Button
+            size="lg"
+            variant="outline"
+            className="rounded-full"
+            disabled={openChat.isPending}
+            onClick={() => openChat.mutate(user.id)}
+          >
+            <MessageCircle className="size-4" /> Message seller
           </Button>
         )}
+        {isSeller && (
+          <Button size="lg" variant="outline" className="rounded-full" asChild>
+            <Link to="/dashboard">
+              <LayoutGrid className="size-4" /> Manage this listing
+            </Link>
+          </Button>
+        )}
+        {extraActions}
       </div>
 
-      {mine.length > 0 && (
+      {!isSeller && listing.status !== "available" && (
+        <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
+          {listing.status === "reserved"
+            ? "This item is reserved for another buyer right now. You can still message the seller."
+            : listing.status === "sold"
+              ? "This item has been sold."
+              : "This item isn't available right now."}
+        </p>
+      )}
+
+      {!isSeller && hasOpenOffer && (
+        <p className="rounded-2xl bg-secondary px-4 py-3 text-sm text-secondary-foreground">
+          You have an open offer below. You can cancel it or wait for the seller to respond.
+        </p>
+      )}
+
+      {rows.length > 0 && (
         <div className="rounded-3xl border bg-card p-5">
-          <h3 className="font-display text-lg font-bold">Offers</h3>
+          <h3 className="font-display text-lg font-bold">{isSeller ? "Offers received" : "Your offers"}</h3>
           <ul className="mt-3 space-y-3">
-            {mine.map((offer) => (
+            {rows.map((offer) => (
               <li key={offer.id} className="rounded-2xl border p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -157,14 +205,34 @@ export function OfferPanel({ listing }: { listing: Listing }) {
                       {timeAgo(offer.created_at)}
                     </p>
                   </div>
-                  <Badge variant={offer.status === "pending" ? "default" : "secondary"} className="rounded-full">
+                  <Badge
+                    variant={offer.status === "pending" ? "default" : "secondary"}
+                    className="rounded-full"
+                  >
                     {OFFER_STATUS_LABELS[offer.status]}
                   </Badge>
                 </div>
-                {offer.message && (
-                  <p className="mt-2 text-sm text-muted-foreground">{offer.message}</p>
-                )}
-                {offer.status === "pending" && <OfferActions offer={offer} listing={listing} onAction={action.mutate} />}
+                {offer.message && <p className="mt-2 text-sm text-muted-foreground">{offer.message}</p>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {offer.status === "pending" && (
+                    <OfferActions
+                      offer={offer}
+                      listing={listing}
+                      onAction={(fn) => action.mutate(fn)}
+                    />
+                  )}
+                  {isSeller && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="rounded-full"
+                      disabled={openChat.isPending}
+                      onClick={() => openChat.mutate(offer.buyer_id)}
+                    >
+                      <MessageCircle className="size-4" /> Message buyer
+                    </Button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -193,8 +261,6 @@ export function OfferPanel({ listing }: { listing: Listing }) {
           </ol>
         </div>
       )}
-
-      {openOffer && !isSeller && null}
     </div>
   );
 }
@@ -211,24 +277,26 @@ function OfferActions({
   const { user } = useAuth();
   if (!user) return null;
   const canRespond = user.id !== offer.created_by;
-  const isMine = user.id === offer.created_by;
+  const canAccept = canRespond && listing.status === "available";
 
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
+    <>
+      {canAccept && (
+        <Button
+          size="sm"
+          className="rounded-full"
+          onClick={() =>
+            onAction(async () => {
+              await setOfferStatus(offer.id, "accepted");
+              toast.success("Offer accepted — the item is now reserved.");
+            })
+          }
+        >
+          <Check className="size-4" /> Accept
+        </Button>
+      )}
       {canRespond && (
         <>
-          <Button
-            size="sm"
-            className="rounded-full"
-            onClick={() =>
-              onAction(async () => {
-                await setOfferStatus(offer.id, "accepted");
-                toast.success("Offer accepted — the item is now reserved.");
-              })
-            }
-          >
-            <Check className="size-4" /> Accept
-          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -244,6 +312,7 @@ function OfferActions({
           </Button>
           <OfferDialog
             title="Counter offer"
+            description={`Their offer is ${formatPrice(offer.amount, listing.currency)}. Suggest a price in between.`}
             suggested={offer.amount}
             trigger={
               <Button size="sm" variant="outline" className="rounded-full">
@@ -252,14 +321,14 @@ function OfferActions({
             }
             onSubmit={(amount, message) =>
               onAction(async () => {
-                await counterOffer(offer, amount, user.id, message);
+                await counterOffer(offer, amount, message);
                 toast.success("Counter offer sent.");
               })
             }
           />
         </>
       )}
-      {isMine && (
+      {!canRespond && (
         <Button
           size="sm"
           variant="ghost"
@@ -274,25 +343,40 @@ function OfferActions({
           Cancel offer
         </Button>
       )}
-      <span className="sr-only">{listing.title}</span>
-    </div>
+    </>
   );
 }
 
 export function OfferDialog({
   title,
+  description = "Suggest a price and add a short note.",
   suggested,
   trigger,
   onSubmit,
 }: {
   title: string;
+  description?: string;
   suggested: number;
-  trigger: React.ReactNode;
+  trigger: ReactNode;
   onSubmit: (amount: number, message: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState(String(suggested));
   const [message, setMessage] = useState("");
+
+  // Start from the current price every time the dialog opens.
+  useEffect(() => {
+    if (open) setAmount(String(suggested));
+  }, [open, suggested]);
+
+  const submit = () => {
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) return toast.error("Enter a valid amount.");
+    if (value > 1_000_000_000) return toast.error("That amount is too large.");
+    onSubmit(Math.round(value * 100) / 100, message.trim() || null);
+    setOpen(false);
+    setMessage("");
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -300,36 +384,34 @@ export function OfferDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>Suggest a price and add a short note.</DialogDescription>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           <div className="grid gap-1.5">
-            <Label htmlFor="amount">Your price</Label>
+            <Label htmlFor="offer-amount">Your price</Label>
             <Input
-              id="amount"
+              id="offer-amount"
               type="number"
-              min="1"
+              min="0.01"
               step="0.01"
+              inputMode="decimal"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="note">Message (optional)</Label>
-            <Textarea id="note" rows={3} value={message} onChange={(e) => setMessage(e.target.value)} />
+            <Label htmlFor="offer-note">Message (optional)</Label>
+            <Textarea
+              id="offer-note"
+              rows={3}
+              maxLength={500}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+            />
           </div>
         </div>
         <DialogFooter>
-          <Button
-            className="rounded-full"
-            onClick={() => {
-              const value = Number(amount);
-              if (!value || value <= 0) return toast.error("Enter a valid amount.");
-              onSubmit(value, message || null);
-              setOpen(false);
-              setMessage("");
-            }}
-          >
+          <Button className="rounded-full" onClick={submit}>
             Send
           </Button>
         </DialogFooter>

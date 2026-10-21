@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { SlidersHorizontal, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { ProductGrid } from "@/components/product-card";
 import { Button } from "@/components/ui/button";
@@ -18,12 +19,12 @@ import { fetchCategories, fetchListings } from "@/lib/marketplace";
 import { CONDITIONS, type Condition } from "@/lib/types";
 
 interface BrowseSearch {
-  q?: string;
-  category?: string;
-  condition?: Condition | "all";
-  min?: number;
-  max?: number;
-  sort?: "new" | "price_asc" | "price_desc";
+  q?: string | undefined;
+  category?: string | undefined;
+  condition?: Condition | "all" | undefined;
+  min?: number | undefined;
+  max?: number | undefined;
+  sort?: "new" | "price_asc" | "price_desc" | undefined;
 }
 
 export const Route = createFileRoute("/browse")({
@@ -68,6 +69,27 @@ function BrowsePage() {
   const update = (patch: Partial<BrowseSearch>) =>
     void navigate({ search: (prev) => ({ ...prev, ...patch }) });
 
+  // Typing in the keyword box shouldn't fire a search on every keystroke.
+  const [keyword, setKeyword] = useState(search.q ?? "");
+  const lastSent = useRef(search.q ?? "");
+  useEffect(() => {
+    // The URL changed from somewhere else (Clear button, header search): mirror it.
+    if ((search.q ?? "") !== lastSent.current) {
+      lastSent.current = search.q ?? "";
+      setKeyword(search.q ?? "");
+    }
+  }, [search.q]);
+  useEffect(() => {
+    const wanted = keyword.trim();
+    if (wanted === lastSent.current) return;
+    const timer = window.setTimeout(() => {
+      lastSent.current = wanted;
+      update({ q: wanted || undefined });
+    }, 350);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyword]);
+
   const hasFilters = Boolean(
     search.q || search.category || (search.condition && search.condition !== "all") || search.min || search.max,
   );
@@ -109,9 +131,9 @@ function BrowsePage() {
               <Label htmlFor="keyword">Keyword</Label>
               <Input
                 id="keyword"
-                value={search.q ?? ""}
+                value={keyword}
                 placeholder="e.g. camera"
-                onChange={(e) => update({ q: e.target.value || undefined })}
+                onChange={(e) => setKeyword(e.target.value)}
               />
             </div>
 

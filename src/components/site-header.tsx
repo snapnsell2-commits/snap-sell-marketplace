@@ -1,7 +1,19 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Heart, LayoutGrid, LogOut, Menu, Plus, Search, User as UserIcon } from "lucide-react";
+import {
+  HandCoins,
+  Heart,
+  LayoutGrid,
+  LogOut,
+  Menu,
+  MessageCircle,
+  Plus,
+  Search,
+  User as UserIcon,
+} from "lucide-react";
 import { useState, type FormEvent } from "react";
 
+import { NotificationBell } from "@/components/notification-bell";
+import { RealtimeBridge } from "@/components/realtime-bridge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -16,6 +28,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/auth";
+import { useUnreadMessages } from "@/lib/use-unread";
 
 function Logo() {
   return (
@@ -28,9 +41,19 @@ function Logo() {
   );
 }
 
+function CountBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="absolute -right-0.5 -top-0.5 grid min-w-5 place-items-center rounded-full bg-primary px-1 text-[11px] font-bold text-primary-foreground">
+      {count > 9 ? "9+" : count}
+    </span>
+  );
+}
+
 export function SiteHeader() {
   const navigate = useNavigate();
   const { user, profile, signOut } = useAuth();
+  const unread = useUnreadMessages();
   const [term, setTerm] = useState("");
   const [open, setOpen] = useState(false);
 
@@ -46,6 +69,7 @@ export function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/85 backdrop-blur-xl">
+      <RealtimeBridge />
       <div className="container-page flex h-16 items-center gap-3">
         <Logo />
 
@@ -69,6 +93,15 @@ export function SiteHeader() {
               <Heart className="size-5" />
             </Link>
           </Button>
+          {user && (
+            <Button variant="ghost" size="icon" className="relative rounded-full" asChild>
+              <Link to="/messages" aria-label={unread > 0 ? `Messages (${unread} unread)` : "Messages"}>
+                <MessageCircle className="size-5" />
+                <CountBadge count={unread} />
+              </Link>
+            </Button>
+          )}
+          <NotificationBell />
           <ThemeToggle />
           <Button asChild className="rounded-full">
             <Link to="/sell">
@@ -96,6 +129,16 @@ export function SiteHeader() {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
+                  <Link to="/dashboard" search={{ tab: "offers" }}>
+                    <HandCoins className="size-4" /> My offers
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/messages">
+                    <MessageCircle className="size-4" /> Messages{unread > 0 ? ` (${unread})` : ""}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
                   <Link to="/profile">
                     <UserIcon className="size-4" /> Edit profile
                   </Link>
@@ -114,6 +157,15 @@ export function SiteHeader() {
         </nav>
 
         <div className="ml-auto flex items-center gap-1 md:hidden">
+          {user && (
+            <Button variant="ghost" size="icon" className="relative rounded-full" asChild>
+              <Link to="/messages" aria-label={unread > 0 ? `Messages (${unread} unread)` : "Messages"}>
+                <MessageCircle className="size-5" />
+                <CountBadge count={unread} />
+              </Link>
+            </Button>
+          )}
+          <NotificationBell />
           <ThemeToggle />
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
@@ -147,6 +199,12 @@ export function SiteHeader() {
                   <>
                     <Button variant="ghost" className="justify-start" asChild onClick={() => setOpen(false)}>
                       <Link to="/dashboard">My listings</Link>
+                    </Button>
+                    <Button variant="ghost" className="justify-start" asChild onClick={() => setOpen(false)}>
+                      <Link to="/dashboard" search={{ tab: "offers" }}>My offers</Link>
+                    </Button>
+                    <Button variant="ghost" className="justify-start" asChild onClick={() => setOpen(false)}>
+                      <Link to="/messages">Messages{unread > 0 ? ` (${unread})` : ""}</Link>
                     </Button>
                     <Button variant="ghost" className="justify-start" asChild onClick={() => setOpen(false)}>
                       <Link to="/profile">Edit profile</Link>

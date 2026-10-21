@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ImagePlus, Mic, Send, Smile, Square } from "lucide-react";
+import { ArrowLeft, ImagePlus, Mic, Send, Smile, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -16,9 +16,10 @@ import {
   sendMessage,
   uploadChatMedia,
 } from "@/lib/chat";
+import { MAX_UPLOAD_BYTES, resizeImage } from "@/lib/images";
 import { supabase } from "@/lib/supabase";
 import { timeAgo, type Conversation, type Message, type Profile } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, errorMessage } from "@/lib/utils";
 
 const EMOJI = ["😀","😂","🥰","😎","👍","🙏","🔥","🎉","💸","📦","✅","❌","❤️","👀","🤝","😅"];
 
@@ -43,8 +44,7 @@ export const Route = createFileRoute("/messages")({
 function MessagesPage() {
   const { c } = Route.useSearch();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
+  const { user, loading } = useAuth();
 
   const conversations = useQuery({
     queryKey: ["conversations", user?.id ?? null],
@@ -52,24 +52,28 @@ function MessagesPage() {
     enabled: Boolean(user),
   });
 
+  // A chat that was only just created isn't in the cached list yet — fetch again once.
+  const { refetch } = conversations;
+  const known = Boolean(c && conversations.data?.some((r) => r.id === c));
+  const [retried, setRetried] = useState<string | null>(null);
   useEffect(() => {
-    if (!supabase || !user) return;
-    const channel = supabase
-      .channel(`inbox:${user.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
-        void queryClient.invalidateQueries({ queryKey: ["conversations", user.id] });
-      })
-      .subscribe();
-    return () => {
-      void supabase?.removeChannel(channel);
-    };
-  }, [user, queryClient]);
+    if (c && conversations.data && !known && retried !== c) {
+      setRetried(c);
+      void refetch();
+    }
+  }, [c, conversations.data, known, retried, refetch]);
+
+  if (loading) {
+    return <div className="container-page py-24 text-center text-muted-foreground">Loading…</div>;
+  }
 
   if (!user) {
     return (
       <div className="container-page py-24 text-center">
         <h1 className="font-display text-3xl font-extrabold">Sign in to see your messages</h1>
-        <Button className="mt-6 rounded-full" asChild><Link to="/auth">Sign in</Link></Button>
+        <Button className="mt-6 rounded-full" asChild>
+          <Link to="/auth" search={{ redirect: "/messages" }}>Sign in</Link>
+        </Button>
       </div>
     );
   }
@@ -129,7 +133,7 @@ function MessagesPage() {
         </aside>
 
         {active ? (
-          <ChatWindow conversation={active} meId={user.id} />
+          <ChatWindow key={active.id} conversation={active} meId={user.id} />
         ) : (
           <div className="hidden place-items-center rounded-3xl border border-dashed p-10 text-muted-foreground lg:grid">
             Pick a conversation to start chatting.
@@ -149,15 +153,16 @@ function previewText(message: Message | null | undefined) {
 
 function ChatWindow({ conversation, meId }: { conversation: Conversation; meId: string }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const other: Profile | null | undefined =
     conversation.buyer_id === meId ? conversation.seller : conversation.buyer;
 
-  const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [online, setOnline] = useState(false);
   const [typing, setTyping] = useState(false);
   const [recording, setRecording] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
+  const typingTimer = useRef<number | undefined>(undefined);
   const bottom = useRef<HTMLDivElement | null>(null);
   const channelRef = useRef<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
 
@@ -166,9 +171,7 @@ function ChatWindow({ conversation, meId }: { conversation: Conversation; meId: 
     queryFn: () => fetchMessages(conversation.id),
   });
 
-  useEffect(() => {
-    if (query.data) setMessages(query.data);
-  }, [query.data]);
+  const messages: Message[] = query.data ?? [];
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth" });
@@ -206,7 +209,8 @@ function ChatWindow({ conversation, meId }: { conversation: Conversation; meId: 
         const from = (payload['payload'] as { from: string } | undefined)?.from;
         if (from && from !== meId) {
           setTyping(true);
-          window.setTimeout(() => setTyping(false), 2500);
+          window.clearTimeout(typingTimer.current);
+          typingTimer.current = window.setTimeout(() => setTyping(false), 2500);
         }
       })
       .subscribe(async (status) => {
@@ -214,10 +218,24 @@ function ChatWindow({ conversation, meId }: { conversation: Conversation; meId: 
       });
 
     return () => {
+      window.clearTimeout(typingTimer.current);
       void supabase?.removeChannel(channel);
       channelRef.current = null;
     };
   }, [conversation.id, meId, queryClient]);
+
+  // Leaving the chat mid-recording must release the microphone.
+  useEffect(
+    () => () => {
+      const rec = recorder.current;
+      if (rec && rec.state !== "inactive") {
+        rec.onstop = null;
+        rec.stop();
+        rec.stream.getTracks().forEach((t) => t.stop());
+      }
+    },
+    [],
+  );
 
   const notifyTyping = useMemo(() => {
     let last = 0;
@@ -242,17 +260,20 @@ function ChatWindow({ conversation, meId }: { conversation: Conversation; meId: 
       void queryClient.invalidateQueries({ queryKey: ["messages", conversation.id] });
       void queryClient.invalidateQueries({ queryKey: ["conversations", meId] });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Message failed to send.");
+      toast.error(errorMessage(error, "Message failed to send."));
     }
   };
 
   const sendImage = async (file: File | undefined) => {
     if (!file) return;
+    if (!file.type.startsWith("image/")) return toast.error("Please choose an image file.");
+    if (file.size > MAX_UPLOAD_BYTES) return toast.error("That photo is too large (25 MB max).");
     try {
-      const url = await uploadChatMedia(meId, conversation.id, file, file.name.split(".").pop() ?? "jpg");
+      const body = await resizeImage(file);
+      const url = await uploadChatMedia(meId, conversation.id, body, file.name);
       await send({ kind: "image", attachment_url: url });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Upload failed.");
+      toast.error(errorMessage(error, "Upload failed."));
     }
   };
 
@@ -265,30 +286,42 @@ function ChatWindow({ conversation, meId }: { conversation: Conversation; meId: 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const rec = new MediaRecorder(stream);
+      const mime = (rec.mimeType || "audio/webm").split(";")[0] ?? "audio/webm";
       const chunks: BlobPart[] = [];
       const started = Date.now();
       rec.ondataavailable = (e) => chunks.push(e.data);
       rec.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunks, { type: "audio/webm" });
+        const blob = new Blob(chunks, { type: mime });
+        if (blob.size === 0) return;
         try {
-          const url = await uploadChatMedia(meId, conversation.id, blob, "webm");
+          const url = await uploadChatMedia(meId, conversation.id, blob);
           await send({ kind: "voice", attachment_url: url, duration_ms: Date.now() - started });
         } catch (error) {
-          toast.error(error instanceof Error ? error.message : "Could not send the voice note.");
+          toast.error(errorMessage(error, "Could not send the voice note."));
         }
       };
       rec.start();
       recorder.current = rec;
       setRecording(true);
     } catch {
-      toast.error("Microphone permission is needed for voice notes.");
+      toast.error("Microphone access is needed for voice notes. Check your browser permissions.");
     }
   };
 
   return (
     <section className="flex h-[70vh] flex-col rounded-3xl border bg-card">
       <header className="flex items-center gap-3 border-b p-4">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="rounded-full lg:hidden"
+          aria-label="Back to conversations"
+          onClick={() => void navigate({ to: "/messages", search: { c: undefined } })}
+        >
+          <ArrowLeft className="size-5" />
+        </Button>
         <Avatar className="size-10">
           <AvatarImage src={other?.avatar_url ?? undefined} alt="" />
           <AvatarFallback>{(other?.username ?? "?").slice(0, 1).toUpperCase()}</AvatarFallback>
@@ -352,7 +385,11 @@ function ChatWindow({ conversation, meId }: { conversation: Conversation; meId: 
       >
         <label className="grid size-9 cursor-pointer place-items-center rounded-full hover:bg-muted" aria-label="Send a photo">
           <ImagePlus className="size-5" />
-          <input type="file" accept="image/*" className="sr-only" onChange={(e) => void sendImage(e.target.files?.[0])} />
+          <input type="file" accept="image/*" className="sr-only" onChange={(e) => {
+              void sendImage(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
         </label>
 
         <Popover>

@@ -82,16 +82,15 @@ export async function setOfferStatus(offerId: string, status: OfferStatus): Prom
   if (error) throw error;
 }
 
-/** Seller counters: the original offer is marked countered and a new offer is created. */
-export async function counterOffer(offer: Offer, amount: number, actorId: string, message?: string) {
-  await setOfferStatus(offer.id, "countered");
-  await sendOffer({
-    listingId: offer.listing_id,
-    buyerId: offer.buyer_id,
-    sellerId: offer.seller_id,
-    amount,
-    message: message ?? null,
-    createdBy: actorId,
-    parentOfferId: offer.id,
+/**
+ * Counter an offer. The original is marked countered and the new offer is
+ * created in one database step, so you can never end up with only half of it.
+ */
+export async function counterOffer(offer: Offer, amount: number, message?: string | null) {
+  const { error } = await requireSupabase().rpc("counter_offer", {
+    _offer: offer.id,
+    _amount: amount,
+    _message: message ?? null,
   });
+  if (error) throw error;
 }

@@ -1,6 +1,6 @@
 import { Info } from "lucide-react";
 
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { isSupabaseConfigured, supabaseConfigProblem } from "@/lib/supabase";
 
 /**
  * Shown until the owner connects their own Supabase project.
@@ -18,8 +18,9 @@ export function SetupNotice({ className }: { className?: string }) {
       <Info className="mt-0.5 size-4 shrink-0 text-primary" />
       <p>
         <span className="font-medium text-foreground">Demo mode.</span> Sample listings are shown
-        and saved items stay on this device. Connect your Supabase project in Project Settings →
-        Connectors to switch on real accounts, listings and photo uploads.
+        and saved items stay on this device.{" "}
+        {supabaseConfigProblem ??
+          "Add your Supabase URL and publishable key (see SETUP.md) to switch on real accounts, listings, chat and photo uploads."}
       </p>
     </div>
   );

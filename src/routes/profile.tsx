@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/lib/auth";
+import { MAX_UPLOAD_BYTES } from "@/lib/images";
 import { updateProfile, uploadAvatar } from "@/lib/marketplace";
+import { errorMessage } from "@/lib/utils";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({
@@ -26,13 +28,14 @@ export const Route = createFileRoute("/profile")({
 });
 
 function ProfilePage() {
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, loading, refreshProfile } = useAuth();
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [location, setLocation] = useState("");
   const [avatar, setAvatar] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
@@ -43,41 +46,59 @@ function ProfilePage() {
     setAvatar(profile.avatar_url);
   }, [profile]);
 
+  if (loading) {
+    return <div className="container-page py-24 text-center text-muted-foreground">Loading…</div>;
+  }
+
   if (!user) {
     return (
       <div className="container-page py-24 text-center">
         <h1 className="font-display text-3xl font-extrabold">Sign in to edit your profile</h1>
-        <Button className="mt-6 rounded-full" asChild><Link to="/auth">Sign in</Link></Button>
+        <Button className="mt-6 rounded-full" asChild>
+          <Link to="/auth" search={{ redirect: "/profile" }}>Sign in</Link>
+        </Button>
       </div>
     );
   }
 
   const pickAvatar = async (file: File | undefined) => {
     if (!file) return;
+    if (!file.type.startsWith("image/")) return toast.error("Please choose an image file.");
+    if (file.size > MAX_UPLOAD_BYTES) return toast.error("That photo is too large (25 MB max).");
+    setUploading(true);
     try {
       const url = await uploadAvatar(user.id, file);
       setAvatar(url);
       toast.success("Photo uploaded. Save to apply.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Upload failed.");
+      toast.error(errorMessage(error, "Upload failed."));
+    } finally {
+      setUploading(false);
     }
   };
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
+    const name = username.trim().toLowerCase();
+    if (!/^[a-z0-9_.-]{3,24}$/.test(name)) {
+      return toast.error("Usernames are 3–24 characters: letters, numbers, dots, dashes, underscores.");
+    }
     setBusy(true);
     try {
       await updateProfile(user.id, {
-        username,
-        display_name: displayName || null,
-        bio: bio || null,
-        location: location || null,
+        username: name,
+        display_name: displayName.trim() || null,
+        bio: bio.trim() || null,
+        location: location.trim() || null,
         avatar_url: avatar,
       });
       await refreshProfile();
       toast.success("Profile saved.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save.");
+      const code = (error as { code?: string } | null)?.code;
+      toast.error(
+        code === "23505" ? "That username is already taken." : errorMessage(error, "Could not save."),
+      );
     } finally {
       setBusy(false);
     }
@@ -94,12 +115,16 @@ function ProfilePage() {
             <AvatarFallback>{(displayName || username || "S").slice(0, 1).toUpperCase()}</AvatarFallback>
           </Avatar>
           <label className="cursor-pointer rounded-full border px-4 py-2 text-sm font-medium hover:border-primary hover:text-primary">
-            Change photo
+            {uploading ? "Uploading…" : "Change photo"}
             <input
               type="file"
               accept="image/*"
               className="sr-only"
-              onChange={(e) => void pickAvatar(e.target.files?.[0])}
+              disabled={uploading}
+              onChange={(e) => {
+                void pickAvatar(e.target.files?.[0]);
+                e.target.value = "";
+              }}
             />
           </label>
         </div>
@@ -107,6 +132,7 @@ function ProfilePage() {
         <div className="grid gap-1.5">
           <Label htmlFor="username">Username</Label>
           <Input id="username" required value={username} onChange={(e) => setUsername(e.target.value)} />
+          <p className="text-xs text-muted-foreground">Lowercase letters, numbers, dots, dashes and underscores.</p>
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="display">Display name</Label>
